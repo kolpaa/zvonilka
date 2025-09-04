@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Zvonilka Connection</title>
+    <style>
+        body { font-family: Arial; padding: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .info { background: #d1ecf1; color: #0c5460; }
+        button { padding: 10px 20px; margin: 5px; font-size: 16px; }
+        code { background: #f4f4f4; padding: 2px 4px; border-radius: 3px; }
+    </style>
+</head>
+<body>
+    <h1>🔔 Zvonilka Connection Test</h1>
+    <p>Эта страница использует текущий адрес для тестов. Откройте её по адресу <code>/test</code> на вашем сервере.</p>
+    <div id="status" class="status info">Готов к тестированию</div>
+    
+    <button onclick="testWebSocket()">Тест WebSocket</button>
+    <button onclick="testCamera()">Тест камеры</button>
+    <button onclick="testAPI()">Тест API</button>
+    
+    <div id="log"></div>
+    
+    <script>
+        const log = document.getElementById('log');
+        const status = document.getElementById('status');
+
+        const isHTTPS = window.location.protocol === 'https:';
+        const httpBase = `${isHTTPS ? 'https:' : 'http:'}//${window.location.hostname}${window.location.port ? ':' + window.location.port : ''}`;
+        const wsBase = `${isHTTPS ? 'wss:' : 'ws:'}//${window.location.hostname}${window.location.port ? ':' + window.location.port : ''}`;
+        
+        function addLog(message, type = 'info') {
+            const div = document.createElement('div');
+            div.className = `status ${type}`;
+            div.innerHTML = `${new Date().toLocaleTimeString()}: ${message}`;
+            log.appendChild(div);
+        }
+        
+        function setStatus(message, type = 'info') {
+            status.className = `status ${type}`;
+            status.innerHTML = message;
+        }
+        
+        async function testAPI() {
+            try {
+                setStatus('Тестируем API...', 'info');
+                const response = await fetch(`${httpBase}/api/generate-room`);
+                const data = await response.json();
+                addLog(`API работает! Room ID: ${data.room_id}`, 'success');
+                setStatus('API тест пройден', 'success');
+            } catch (error) {
+                addLog(`Ошибка API: ${error.message}`, 'error');
+                setStatus('API тест не пройден', 'error');
+            }
+        }
+        
+        function testWebSocket() {
+            try {
+                setStatus('Подключаемся к WebSocket...', 'info');
+                const userId = Math.random().toString(36).substr(2, 9).toUpperCase();
+                const ws = new WebSocket(`${wsBase}/ws/${userId}`);
+                
+                ws.onopen = () => {
+                    addLog('WebSocket подключение установлено', 'success');
+                    setStatus('WebSocket работает', 'success');
+                    
+                    // Тест отправки сообщения
+                    ws.send(JSON.stringify({
+                        type: 'join_room',
+                        room_id: `TEST-${userId}`
+                    }));
+                };
+                
+                ws.onmessage = (event) => {
+                    const data = JSON.parse(event.data);
+                    addLog(`Получено сообщение: ${JSON.stringify(data)}`, 'info');
+                };
+                
+                ws.onerror = (error) => {
+                    addLog(`WebSocket ошибка: ${error}`, 'error');
+                    setStatus('WebSocket ошибка', 'error');
+                };
+                
+                ws.onclose = () => {
+                    addLog('WebSocket соединение закрыто', 'info');
+                };
+                
+                // Закрыть через 5 секунд
+                setTimeout(() => {
+                    try { ws.close(); } catch (e) {}
+                }, 5000);
+                
+            } catch (error) {
+                addLog(`Ошибка WebSocket: ${error.message}`, 'error');
+                setStatus('WebSocket тест не пройден', 'error');
+            }
+        }
+        
+        async function testCamera() {
+            try {
+                setStatus('Запрашиваем доступ к камере...', 'info');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                
+                addLog('Доступ к камере получен', 'success');
+                setStatus('Камера работает', 'success');
+                
+                // Останавливаем поток через 2 секунды
+                setTimeout(() => {
+                    stream.getTracks().forEach(track => track.stop());
+                    addLog('Поток камеры остановлен', 'info');
+                }, 2000);
+                
+            } catch (error) {
+                addLog(`Ошибка камеры: ${error.message}`, 'error');
+                setStatus('Камера недоступна', 'error');
+                
+                if (error.name === 'NotAllowedError') {
+                    addLog('Доступ к камере запрещен пользователем', 'error');
+                } else if (error.name === 'NotFoundError') {
+                    addLog('Камера не найдена', 'error');
+                } else if (error.message && error.message.includes('secure')) {
+                    addLog('Требуется HTTPS или localhost для доступа к камере', 'error');
+                }
+            }
+        }
+        
+        // Автоматический тест при загрузке
+        window.onload = () => {
+            addLog('Страница загружена, начинаем тесты...', 'info');
+            setTimeout(testAPI, 1000);
+        };
+    </script>
+</body>
+</html>
