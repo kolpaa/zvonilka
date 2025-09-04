@@ -126,7 +126,16 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
             
             if message_type == "join_room":
                 room_id = message.get("room_id")
+                # список участников до добавления текущего
+                existing_users = list(manager.rooms.get(room_id, []))
                 manager.create_room(room_id, user_id)
+
+                # Отправляем список текущих участников вошедшему
+                await manager.send_personal_message({
+                    "type": "room_users",
+                    "room_id": room_id,
+                    "users": existing_users
+                }, user_id)
                 
                 # Notify others in the room
                 await manager.broadcast_to_room({
@@ -148,38 +157,62 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
                 
             elif message_type == "offer":
                 room_id = message.get("room_id")
-                await manager.broadcast_to_room({
+                to_user = message.get("to_user")
+                payload = {
                     "type": "offer",
                     "offer": message.get("offer"),
                     "from_user": user_id,
                     "room_id": room_id
-                }, room_id, exclude_user=user_id)
+                }
+                if to_user:
+                    payload["to_user"] = to_user
+                    await manager.send_personal_message(payload, to_user)
+                else:
+                    await manager.broadcast_to_room(payload, room_id, exclude_user=user_id)
                 
             elif message_type == "answer":
                 room_id = message.get("room_id")
-                await manager.broadcast_to_room({
+                to_user = message.get("to_user")
+                payload = {
                     "type": "answer",
                     "answer": message.get("answer"),
                     "from_user": user_id,
                     "room_id": room_id
-                }, room_id, exclude_user=user_id)
+                }
+                if to_user:
+                    payload["to_user"] = to_user
+                    await manager.send_personal_message(payload, to_user)
+                else:
+                    await manager.broadcast_to_room(payload, room_id, exclude_user=user_id)
                 
             elif message_type == "ice_candidate":
                 room_id = message.get("room_id")
-                await manager.broadcast_to_room({
+                to_user = message.get("to_user")
+                payload = {
                     "type": "ice_candidate",
                     "candidate": message.get("candidate"),
                     "from_user": user_id,
                     "room_id": room_id
-                }, room_id, exclude_user=user_id)
+                }
+                if to_user:
+                    payload["to_user"] = to_user
+                    await manager.send_personal_message(payload, to_user)
+                else:
+                    await manager.broadcast_to_room(payload, room_id, exclude_user=user_id)
                 
             elif message_type == "hangup":
                 room_id = message.get("room_id")
-                await manager.broadcast_to_room({
+                to_user = message.get("to_user")
+                payload = {
                     "type": "hangup",
                     "from_user": user_id,
                     "room_id": room_id
-                }, room_id, exclude_user=user_id)
+                }
+                if to_user:
+                    payload["to_user"] = to_user
+                    await manager.send_personal_message(payload, to_user)
+                else:
+                    await manager.broadcast_to_room(payload, room_id, exclude_user=user_id)
                 
     except WebSocketDisconnect:
         # On unexpected disconnect, remove user and notify rooms
