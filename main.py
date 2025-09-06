@@ -9,6 +9,8 @@ from typing import Dict, List
 import logging
 import os
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
 app = FastAPI()
 
 # CORS middleware (no credentials with wildcard origin)
@@ -92,12 +94,12 @@ class MessageData(BaseModel):
 # Serve the main HTML file
 @app.get("/")
 async def read_root():
-    return FileResponse('index.html')
+    return FileResponse(os.path.join(BASE_DIR, 'index.html'))
 
 # Serve test page
 @app.get("/test")
 async def read_test():
-    return FileResponse('test_connection.html')
+    return FileResponse(os.path.join(BASE_DIR, 'test_connection.html'))
 
 @app.get("/api/generate-room")
 async def generate_room():
@@ -226,22 +228,25 @@ async def websocket_endpoint(websocket: WebSocket, user_id: str):
 
 if __name__ == "__main__":
     import uvicorn
-    import os
-    
-    # Проверяем наличие SSL сертификатов
-    ssl_keyfile = "ssl/key.pem"
-    ssl_certfile = "ssl/cert.pem"
-    
+
+    # Env overrides for public servers / PaaS
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT") or os.getenv("ZVONILKA_PORT", "8000"))
+
+    # Проверяем наличие SSL сертификатов (абсолютные пути)
+    ssl_keyfile = os.path.join(BASE_DIR, "ssl", "key.pem")
+    ssl_certfile = os.path.join(BASE_DIR, "ssl", "cert.pem")
+
     if os.path.exists(ssl_keyfile) and os.path.exists(ssl_certfile):
         print("🔐 Запуск с HTTPS...")
         uvicorn.run(
-            app, 
-            host="0.0.0.0", 
-            port=8000, 
+            app,
+            host=host,
+            port=port,
             log_level="info",
             ssl_keyfile=ssl_keyfile,
-            ssl_certfile=ssl_certfile
+            ssl_certfile=ssl_certfile,
         )
     else:
-        print("⚠️ Запуск без HTTPS (только localhost для камеры)")
-        uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")
+        print("⚠️ Запуск без HTTPS (для камеры/микрофона нужен HTTPS, кроме localhost)")
+        uvicorn.run(app, host=host, port=port, log_level="info")
