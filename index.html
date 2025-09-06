@@ -735,8 +735,27 @@
                 updateStatus('📞 ЗАПУСК ЗВОНКА...', 'info');
                 if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) throw new Error('getUserMedia не поддерживается. Требуется HTTPS или localhost.');
                 if (!localStream) {
-                    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-                    document.getElementById('localVideo').srcObject = localStream;
+                    try {
+                        // Основная попытка: видео+аудио
+                        localStream = await navigator.mediaDevices.getUserMedia({
+                            video: { width: { ideal: 1280 }, height: { ideal: 720 } },
+                            audio: { echoCancellation: true, noiseSuppression: true }
+                        });
+                    } catch (err) {
+                        // Если камера занята/запрещена/ошибка: пробуем только аудио, чтобы не срывать звонок
+                        const msg = (err && (err.name || err.message || '')).toString();
+                        const isVideoAllocFail = msg.includes('NotReadableError') || msg.includes('Could not start video source') || msg.includes('Failed to allocate videosource');
+                        const isNoDevice = (err && err.name === 'NotFoundError');
+                        if (isVideoAllocFail || isNoDevice) {
+                            updateStatus('⚠️ Камера недоступна, подключаемся с микрофоном...', 'info');
+                            localStream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+                            camEnabled = false;
+                            const camBtn = document.getElementById('toggleCamBtn'); if (camBtn) { camBtn.textContent = '📷 КАМЕРА НЕДОСТУПНА'; camBtn.disabled = true; }
+                        } else {
+                            throw err;
+                        }
+                    }
+                    const lv = document.getElementById('localVideo'); if (lv) lv.srcObject = localStream;
                     localCameraStream = localStream;
                 }
                 micEnabled = true; camEnabled = true;
