@@ -311,9 +311,9 @@
         let userNicknames = {}; // map userId -> nickname
         userNicknames[userId] = userNick;
         
-        // Server configuration - автоматическое определение IP
-        let serverIP = '10.8.1.13'; // Ваш текущий VPN IP
-        let serverPort = '8000';
+    // Server configuration - используем текущий хост по умолчанию
+    let serverIP = window.location.hostname || 'localhost';
+    let serverPort = (window.location.port || (window.location.protocol === 'https:' ? '443' : '8000')).toString();
         
         // Попытка автоматически определить VPN IP
         function detectServerIP() {
@@ -353,18 +353,25 @@
         }
         window.updateServerConfig = updateServerConfig;
         
-        // WebRTC configuration
-        const pcConfig = {
-            iceServers: [
-                { urls: 'stun:stun.l.google.com:19302' },
-                { urls: 'stun:stun1.l.google.com:19302' }
-            ]
-        };
+    // WebRTC configuration (будет обновлено после запроса к /api/config)
+    let pcConfig = { iceServers: [{ urls: ['stun:stun.l.google.com:19302','stun:stun1.l.google.com:19302'] }] };
         
         // Initialize background effects
         window.onload = function() {
             createBgIcons();
             detectServerIP();
+            // Подтянуть ICE конфиг с сервера
+            try {
+                const isHTTPS = window.location.protocol === 'https:' || serverPort === '443';
+                const httpProtocol = isHTTPS ? 'https:' : 'http:';
+                const apiUrl = `${httpProtocol}//${serverIP}:${serverPort}/api/config`;
+                fetch(apiUrl).then(r => r.json()).then(cfg => {
+                    if (cfg && Array.isArray(cfg.iceServers) && cfg.iceServers.length) {
+                        pcConfig = { iceServers: cfg.iceServers };
+                        console.log('ICE servers from server:', pcConfig);
+                    }
+                }).catch(() => {});
+            } catch (_) {}
             document.getElementById('currentUserId').textContent = userNick;
             const params = new URLSearchParams(window.location.search);
             const roomParam = params.get('room');
@@ -767,12 +774,8 @@
             // Stop local stream
             if (localStream) { localStream.getTracks().forEach(track => track.stop()); localStream = null; }
             
-            // Clear video elements
-            document.getElementById('localVideo').srcObject = null;
-            document.getElementById('remoteVideo').srcObject = null;
-            
-            // Close peer connection
-            if (peerConnection) { peerConnection.close(); peerConnection = null; }
+            // Clear local preview
+            const lv0 = document.getElementById('localVideo'); if (lv0) lv0.srcObject = null;
             
             // Закрыть чат-канал
             try { if (chatChannel) chatChannel.close(); } catch(_){}
@@ -956,7 +959,11 @@
                     remoteStreams[user] = new MediaStream();
                     addRemoteVideo(user, remoteStreams[user]);
                 }
-                event.streams[0].getTracks().forEach(track => remoteStreams[user].addTrack(track));
+                if (event.streams && event.streams[0]) {
+                    event.streams[0].getTracks().forEach(track => remoteStreams[user].addTrack(track));
+                } else if (event.track) {
+                    remoteStreams[user].addTrack(event.track);
+                }
             };
             pc.onicecandidate = (event) => {
                 if (event.candidate && websocket) {

@@ -91,6 +91,40 @@ class MessageData(BaseModel):
     room_id: str = None
     data: dict = None
 
+# Config endpoint to expose ICE servers to the client
+def build_ice_servers_from_env() -> list:
+    """Build ICE servers array from environment.
+    Supported env vars:
+      - STUN_URLS: comma-separated URLs, e.g. "stun:stun.l.google.com:19302,stun:global.stun.twilio.com:3478"
+      - TURN_URLS: comma-separated TURN URLs, e.g. "turn:turn.example.com:3478?transport=udp,turns:turn.example.com:5349"
+      - TURN_USERNAME / TURN_PASSWORD: credentials for all TURN URLs
+    Fallback: Google STUN if nothing provided
+    """
+    ice_servers = []
+
+    stun_urls = [u.strip() for u in os.getenv("STUN_URLS", "").split(",") if u.strip()]
+    turn_urls = [u.strip() for u in os.getenv("TURN_URLS", "").split(",") if u.strip()]
+    turn_user = os.getenv("TURN_USERNAME") or os.getenv("TURN_USER")
+    turn_pass = os.getenv("TURN_PASSWORD") or os.getenv("TURN_PASS")
+
+    if stun_urls:
+        ice_servers.append({"urls": stun_urls})
+    if turn_urls and turn_user and turn_pass:
+        ice_servers.append({"urls": turn_urls, "username": turn_user, "credential": turn_pass})
+
+    if not ice_servers:
+        ice_servers = [
+            {"urls": ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"]}
+        ]
+    return ice_servers
+
+
+@app.get("/api/config")
+async def get_config():
+    return {
+        "iceServers": build_ice_servers_from_env(),
+    }
+
 # Serve the main HTML file
 @app.get("/")
 async def read_root():
